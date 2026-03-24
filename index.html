@@ -397,7 +397,7 @@ async function loadMarket(){
     if(d.code||!d.close)return null;
     const price=parseFloat(d.close),prev=parseFloat(d.previous_close);
     return{
-      symbol:'QQQ',
+      symbol:'NQ / MNQ',
       price:price,
       prevClose:prev,
       change:price-prev,
@@ -414,7 +414,7 @@ function renderMarket(data){
   if(!data){el.innerHTML='<div class="market-unavailable">Market data unavailable — tap REFRESH to retry</div>';return}
   const up=data.change>=0;
   el.innerHTML=`
-    <div class="market-symbol">${data.symbol} <span class="tag">PROXY FOR NQ</span></div>
+    <div class="market-symbol">${data.symbol} <span class="tag">VIA QQQ ETF</span></div>
     <div class="market-price">$${data.price.toFixed(2)}</div>
     <div class="market-change ${up?'up':'down'}">
       ${up?'▲':'▼'} ${up?'+':''}${data.change.toFixed(2)} (${up?'+':''}${data.changePct.toFixed(2)}%)
