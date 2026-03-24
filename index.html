@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!--
+   ______                            __
+  / ____/___  ____ ___  ____  __  __/ /____  _____
+ / /   / __ \/ __ `__ \/ __ \/ / / / __/ _ \/ ___/
+/ /___/ /_/ / / / / / / /_/ / /_/ / /_/  __/ /
+\____/\____/_/ /_/ /_/ .___/\__,_/\__/\___/_/
+                    /_/
+        Created with Perplexity Computer
+        https://www.perplexity.ai/computer
+-->
+<meta name="generator" content="Perplexity Computer">
+<meta name="author" content="Perplexity Computer">
+<meta property="og:see_also" content="https://www.perplexity.ai/computer">
+<link rel="author" href="https://www.perplexity.ai/computer">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="MNQ Pulse">
+<meta name="theme-color" content="#0f1118">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="manifest" href="manifest.json">
+<title>MNQ Pulse — Futures News Terminal</title>
+<meta name="description" content="Real-time news dashboard for MNQ/NQ futures traders.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@100..900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f1118;--surface:#161922;--surface2:#1c1f2b;--border:#252836;
+  --text:#e2e4ea;--text-muted:#7a7f94;--text-faint:#4a4e60;
+  --green:#2ecc71;--green-dim:#1a7a42;--red:#e74c3c;--red-dim:#8b2e23;
+  --orange:#f39c12;--yellow:#f1c40f;
+  --font-body:'Inter','Helvetica Neue',sans-serif;
+  --font-mono:'Geist Mono','SF Mono',monospace;
+}
+html{background:var(--bg);color:var(--text);font-family:var(--font-body);-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%}
+body{min-height:100dvh;background:var(--bg)}
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+/* Header */
+.header{position:sticky;top:0;z-index:50;background:var(--bg);border-bottom:1px solid var(--border);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+.logo-area{display:flex;align-items:center;gap:10px}
+.logo-icon{width:32px;height:32px;background:var(--green);border-radius:8px;display:flex;align-items:center;justify-content:center}
+.logo-icon svg{width:20px;height:20px}
+.logo-title{font-size:13px;font-weight:700;letter-spacing:0.5px}
+.logo-sub{font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:2px}
+
+/* Refresh Button */
+.refresh-btn{
+  background:var(--green);color:#0f1118;border:none;font-family:var(--font-body);
+  font-size:12px;font-weight:700;letter-spacing:1px;padding:8px 16px;border-radius:8px;
+  cursor:pointer;display:flex;align-items:center;gap:6px;transition:opacity 0.15s;
+  -webkit-tap-highlight-color:transparent;
+}
+.refresh-btn:active{opacity:0.7}
+.refresh-btn.loading{opacity:0.6;pointer-events:none}
+.refresh-btn svg{width:16px;height:16px;transition:transform 0.3s}
+.refresh-btn.loading svg{animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Last Updated */
+.last-updated{font-size:10px;color:var(--text-faint);font-family:var(--font-mono);margin-right:8px;display:none}
+@media(min-width:480px){.last-updated{display:inline}}
+
+/* Main */
+.main{max-width:1400px;margin:0 auto;padding:12px}
+
+/* Grid */
+.top-row{display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:12px}
+@media(min-width:768px){.top-row{grid-template-columns:2fr 1fr}}
+.bottom-row{display:grid;grid-template-columns:1fr;gap:12px}
+@media(min-width:900px){.bottom-row{grid-template-columns:2fr 1fr}}
+
+/* Cards */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.card-header{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:var(--text-muted)}
+.card-header .icon{color:var(--green);display:flex}
+.badge{font-size:10px;background:var(--surface2);color:var(--text-muted);padding:2px 8px;border-radius:99px;margin-left:auto;font-weight:500}
+
+/* Market Card */
+.market-card{padding:16px}
+.market-symbol{font-size:11px;color:var(--text-muted);font-weight:600;letter-spacing:1px;display:flex;align-items:center;gap:8px}
+.market-symbol .tag{font-size:9px;background:var(--surface2);padding:2px 6px;border-radius:4px}
+.market-price{font-size:32px;font-weight:700;font-family:var(--font-mono);margin:4px 0;font-variant-numeric:tabular-nums}
+.market-change{font-size:14px;font-weight:600;font-family:var(--font-mono);display:inline-flex;align-items:center;gap:4px}
+.market-change.up{color:var(--green)}
+.market-change.down{color:var(--red)}
+.market-details{display:flex;gap:16px;margin-top:8px;font-size:11px;color:var(--text-muted);font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.market-unavailable{padding:20px 16px;color:var(--text-muted);font-size:13px}
+
+/* Fear & Greed */
+.fg-card{padding:16px;display:flex;flex-direction:column;align-items:center}
+.fg-label{font-size:11px;color:var(--text-muted);font-weight:600;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:6px;align-self:flex-start}
+.fg-value{font-size:48px;font-weight:700;font-family:var(--font-mono);line-height:1}
+.fg-class{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin-top:4px}
+.fg-prev{font-size:10px;color:var(--text-faint);margin-top:6px}
+.fg-extreme-fear{color:var(--red)}
+.fg-fear{color:var(--orange)}
+.fg-neutral{color:var(--yellow)}
+.fg-greed,.fg-extreme-greed{color:var(--green)}
+
+/* Gauge SVG */
+.gauge-wrap{width:100%;max-width:200px;margin:4px 0}
+
+/* News List */
+.news-scroll{max-height:500px;overflow-y:auto}
+.news-item{display:block;padding:12px 16px;border-bottom:1px solid var(--border);text-decoration:none;color:inherit;transition:background 0.15s;-webkit-tap-highlight-color:transparent}
+.news-item:active,.news-item:hover{background:var(--surface2)}
+.news-item:last-child{border-bottom:none}
+.news-headline{font-size:13px;font-weight:600;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.news-summary{font-size:12px;color:var(--text-muted);margin-top:4px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.news-meta{font-size:10px;color:var(--text-faint);margin-top:6px;display:flex;align-items:center;gap:6px;text-transform:uppercase;letter-spacing:0.5px}
+.news-empty{padding:40px 16px;text-align:center;color:var(--text-muted);font-size:13px}
+
+/* Calendar */
+.cal-scroll{max-height:500px;overflow-y:auto}
+.cal-item{padding:12px 16px;border-bottom:1px solid var(--border)}
+.cal-item:last-child{border-bottom:none}
+.cal-event{font-size:13px;font-weight:600;line-height:1.3}
+.cal-time{font-size:10px;color:var(--text-muted);margin-top:4px;display:flex;align-items:center;gap:4px}
+.cal-impact{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;padding:2px 6px;border-radius:3px;margin-left:6px}
+.cal-impact.high{background:rgba(231,76,60,0.15);color:var(--red)}
+.cal-impact.medium{background:rgba(241,196,15,0.15);color:var(--yellow)}
+.cal-impact.low{background:var(--surface2);color:var(--text-muted)}
+.cal-data{display:flex;gap:12px;margin-top:6px;font-size:10px;font-family:var(--font-mono);color:var(--text-muted);font-variant-numeric:tabular-nums}
+.cal-data strong{color:var(--text);font-weight:600}
+.cal-data .actual{color:var(--green);font-weight:700}
+
+/* Skeleton */
+.skeleton{background:linear-gradient(90deg,var(--surface2) 25%,var(--border) 50%,var(--surface2) 75%);background-size:200% 100%;animation:shimmer 1.5s ease-in-out infinite;border-radius:4px}
+@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+.sk-line{height:14px;margin-bottom:8px}
+.sk-line.w75{width:75%}.sk-line.w50{width:50%}.sk-line.w100{width:100%}
+.sk-big{height:36px;width:40%;margin-bottom:8px}
+
+/* Footer */
+.footer{text-align:center;padding:16px;font-size:10px;color:var(--text-faint)}
+.footer a{color:var(--text-faint);text-decoration:none}
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="logo-area">
+    <div class="logo-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#0f1118" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="4 17 8 9 12 14 16 4 20 12"/>
+      </svg>
+    </div>
+    <div>
+      <div class="logo-title">MNQ PULSE</div>
+      <div class="logo-sub">Futures News Terminal</div>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center">
+    <span class="last-updated" id="lastUpdated"></span>
+    <button class="refresh-btn" id="refreshBtn" onclick="loadAll()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      REFRESH
+    </button>
+  </div>
+</header>
+
+<main class="main">
+  <!-- Top Row -->
+  <div class="top-row">
+    <div class="card" id="marketCard">
+      <div class="market-card" id="marketContent">
+        <div class="skeleton sk-line w50"></div>
+        <div class="skeleton sk-big"></div>
+        <div class="skeleton sk-line w75"></div>
+      </div>
+    </div>
+    <div class="card" id="fgCard">
+      <div class="fg-card" id="fgContent">
+        <div class="fg-label">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+          FEAR & GREED
+        </div>
+        <div class="skeleton" style="width:120px;height:80px;border-radius:60px 60px 0 0;margin:12px 0"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom Row -->
+  <div class="bottom-row">
+    <div class="card" id="newsCard">
+      <div class="card-header">
+        <span class="icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 22h16a2 2 0 002-2V4a2 2 0 00-2-2H8a2 2 0 00-2 2v16a2 2 0 01-2 2zm0 0a2 2 0 01-2-2v-9c0-1.1.9-2 2-2h2"/><line x1="10" y1="6" x2="18" y2="6"/><line x1="10" y1="10" x2="18" y2="10"/><line x1="10" y1="14" x2="14" y2="14"/></svg></span>
+        BREAKING NEWS
+        <span class="badge" id="newsCount">...</span>
+      </div>
+      <div class="news-scroll" id="newsList">
+        <div style="padding:16px">
+          <div class="skeleton sk-line w100"></div>
+          <div class="skeleton sk-line w75"></div>
+          <div class="skeleton sk-line w50"></div>
+          <div style="height:16px"></div>
+          <div class="skeleton sk-line w100"></div>
+          <div class="skeleton sk-line w75"></div>
+          <div class="skeleton sk-line w50"></div>
+        </div>
+      </div>
+    </div>
+    <div class="card" id="calCard">
+      <div class="card-header">
+        <span class="icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>
+        ECONOMIC CALENDAR
+      </div>
+      <div class="cal-scroll" id="calList">
+        <div style="padding:16px">
+          <div class="skeleton sk-line w75"></div>
+          <div class="skeleton sk-line w50"></div>
+          <div style="height:12px"></div>
+          <div class="skeleton sk-line w75"></div>
+          <div class="skeleton sk-line w50"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer class="footer">
+  Data from CNBC, MarketWatch, Investing.com & Alternative.me · Not financial advice<br>
+  <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer">Created with Perplexity Computer</a>
+</footer>
+
+<script>
+// ========== CORS PROXY WITH FALLBACKS ==========
+const PROXIES=[
+  u=>'https://corsproxy.io/?url='+encodeURIComponent(u),
+  u=>'https://api.allorigins.win/raw?url='+encodeURIComponent(u),
+  u=>'https://api.codetabs.com/v1/proxy?quest='+encodeURIComponent(u),
+];
+let activeProxy=0; // remember which proxy is working
+
+async function proxyFetch(url,opts={}){
+  const timeout=opts.timeout||8000;
+  // Try active proxy first, then cycle through others
+  const order=[activeProxy,...[0,1,2].filter(i=>i!==activeProxy)];
+  for(const i of order){
+    try{
+      const r=await fetch(PROXIES[i](url),{signal:AbortSignal.timeout(timeout)});
+      if(r.ok){activeProxy=i;return r}
+    }catch(e){console.warn('Proxy',i,'fail:',e.message)}
+  }
+  return null;
+}
+
+// ========== NEWS ==========
+function stripHtml(s){
+  return s.replace(/<[^>]*>/g,'').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#039;/g,"'").replace(/&apos;/g,"'").replace(/&#x2019;/g,'\u2019').replace(/&#x2014;/g,'\u2014').replace(/&nbsp;/g,' ').replace(/[\u200B-\u200D\u2060\uFEFF]/g,'').trim();
+}
+function extractCDATA(s){const m=s.match(/<!\[CDATA\[([\s\S]*?)\]\]>/);return m?m[1]:s}
+function parseRSS(xml,src){
+  const items=[];
+  const re=/<item>([\s\S]*?)<\/item>/g;let m;
+  while((m=re.exec(xml))!==null){
+    const x=m[1];
+    const t=x.match(/<title>([\s\S]*?)<\/title>/);
+    const l=x.match(/<link>([\s\S]*?)<\/link>/);
+    const d=x.match(/<pubDate>([\s\S]*?)<\/pubDate>/);
+    const desc=x.match(/<description>([\s\S]*?)<\/description>/);
+    if(t&&l){
+      items.push({
+        title:stripHtml(extractCDATA(t[1].trim())),
+        link:extractCDATA(l[1].trim()),
+        pubDate:d?d[1].trim():new Date().toUTCString(),
+        desc:desc?stripHtml(extractCDATA(desc[1].trim())).slice(0,200):'',
+        source:src
+      });
+    }
+  }
+  return items;
+}
+
+async function fetchRSS(url,src){
+  try{
+    const r=await proxyFetch(url);
+    if(!r)return[];
+    return parseRSS(await r.text(),src);
+  }catch(e){console.warn('RSS fail:',src,e.message);return[]}
+}
+
+const FEEDS=[
+  {url:'https://feeds.content.dowjones.io/public/rss/mw_topstories',name:'MarketWatch'},
+  {url:'https://feeds.content.dowjones.io/public/rss/mw_marketpulse',name:'MarketWatch'},
+  {url:'https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114',name:'CNBC'},
+  {url:'https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=15839069',name:'CNBC'},
+  {url:'https://www.investing.com/rss/news.rss',name:'Investing.com'},
+];
+
+const KW=['nasdaq','nq','futures','tech','fed','fomc','cpi','inflation','rate','jobs','employment','gdp','market','stock','s&p','dow','earnings','apple','microsoft','google','amazon','nvidia','meta','tesla','ai','semiconductor','chip','trade','tariff','treasury','bond','yield','rally','sell','bear','bull','volatility','vix','economy','recession','growth','profit','revenue','ipo','sec','regulation','bank','oil','crypto','bitcoin','etf','index','pre-market','premarket','wall street','investor','trading','stocks','shares','equity','quarter','billion','million','percent','forecast','outlook','risk'];
+
+async function loadNews(){
+  const results=await Promise.allSettled(FEEDS.map(f=>fetchRSS(f.url,f.name)));
+  let all=[];
+  results.forEach(r=>{if(r.status==='fulfilled')all.push(...r.value)});
+  const seen=new Set();
+  all=all.sort((a,b)=>new Date(b.pubDate)-new Date(a.pubDate)).filter(i=>{
+    const k=i.title.toLowerCase().slice(0,50);
+    if(seen.has(k))return false;seen.add(k);return true;
+  });
+  const filtered=all.filter(i=>{
+    const t=(i.title+' '+i.desc).toLowerCase();
+    return KW.some(k=>t.includes(k));
+  });
+  return(filtered.length>5?filtered:all).slice(0,30);
+}
+
+function timeAgo(dateStr){
+  const diff=Math.floor((Date.now()-new Date(dateStr).getTime())/1000);
+  if(diff<60)return 'Just now';
+  if(diff<3600){const m=Math.floor(diff/60);return m===1?'1 min ago':m+' min ago'}
+  if(diff<86400){const h=Math.floor(diff/3600);return h===1?'1 hr ago':h+' hrs ago'}
+  const d=Math.floor(diff/86400);return d===1?'Yesterday':d+' days ago';
+}
+
+function renderNews(items){
+  const el=document.getElementById('newsList');
+  document.getElementById('newsCount').textContent=items.length+' stories';
+  if(!items.length){el.innerHTML='<div class="news-empty">Couldn\'t load news — tap REFRESH to retry.<br><span style="font-size:10px;color:var(--text-faint);margin-top:4px;display:block">If this keeps happening, check your internet connection.</span></div>';return}
+  el.innerHTML=items.map(i=>`
+    <a class="news-item" href="${i.link}" target="_blank" rel="noopener noreferrer">
+      <div class="news-headline">${i.title}</div>
+      ${i.desc?'<div class="news-summary">'+i.desc+'</div>':''}
+      <div class="news-meta"><span>${i.source}</span><span>·</span><span>${timeAgo(i.pubDate)}</span></div>
+    </a>
+  `).join('');
+}
+
+// ========== FEAR & GREED ==========
+async function loadFG(){
+  // Try direct first (API has CORS headers), fall back to proxy
+  const url='https://api.alternative.me/fng/?limit=2';
+  let d=null;
+  try{
+    const r=await fetch(url,{signal:AbortSignal.timeout(5000)});
+    d=await r.json();
+  }catch(e){
+    console.warn('FG direct fail, trying proxy:',e.message);
+    try{
+      const r=await proxyFetch(url);
+      if(r)d=await r.json();
+    }catch(e2){console.warn('FG proxy fail:',e2.message)}
+  }
+  if(!d||!d.data||!d.data.length)return null;
+  const cur=d.data[0],prev=d.data[1]||cur;
+  return{value:+cur.value,cls:cur.value_classification,prev:{value:+prev.value,cls:prev.value_classification}};
+}
+
+function fgClass(v){
+  if(v<=25)return'fg-extreme-fear';if(v<=45)return'fg-fear';
+  if(v<=55)return'fg-neutral';if(v<=75)return'fg-greed';return'fg-extreme-greed';
+}
+
+function renderFG(data){
+  const el=document.getElementById('fgContent');
+  if(!data){el.innerHTML='<div style="padding:20px;color:var(--text-muted);font-size:13px">Sentiment data unavailable</div>';return}
+  const angle=((data.value/100)*180-90)*(Math.PI/180);
+  const cx=85,cy=85,r=70;
+  const nx=cx+(r-10)*Math.cos(angle),ny=cy+(r-10)*Math.sin(angle);
+  el.innerHTML=`
+    <div class="fg-label">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+      FEAR & GREED
+    </div>
+    <div class="gauge-wrap">
+      <svg viewBox="0 0 170 100">
+        <defs><linearGradient id="gg" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#e74c3c"/><stop offset="25%" stop-color="#f39c12"/><stop offset="50%" stop-color="#f1c40f"/><stop offset="75%" stop-color="#2ecc71"/><stop offset="100%" stop-color="#27ae60"/></linearGradient></defs>
+        <path d="M ${cx-r} ${cy} A ${r} ${r} 0 0 1 ${cx+r} ${cy}" fill="none" stroke="#252836" stroke-width="12" stroke-linecap="round"/>
+        <path d="M ${cx-r} ${cy} A ${r} ${r} 0 0 1 ${cx+r} ${cy}" fill="none" stroke="url(#gg)" stroke-width="8" stroke-linecap="round" opacity="0.8"/>
+        <line x1="${cx}" y1="${cy}" x2="${nx}" y2="${ny}" stroke="var(--text)" stroke-width="2.5" stroke-linecap="round"/>
+        <circle cx="${cx}" cy="${cy}" r="4" fill="var(--text)"/>
+        <text x="${cx}" y="${cy-18}" text-anchor="middle" fill="var(--text)" font-size="22" font-weight="700" font-family="var(--font-mono)">${data.value}</text>
+      </svg>
+    </div>
+    <div class="fg-class ${fgClass(data.value)}">${data.cls}</div>
+    <div class="fg-prev">Yesterday: ${data.prev.value} (${data.prev.cls})</div>
+  `;
+}
+
+// ========== MARKET DATA ==========
+async function loadMarket(){
+  try{
+    // Twelve Data — free, direct CORS, no proxy needed
+    const r=await fetch('https://api.twelvedata.com/quote?symbol=QQQ&apikey=demo',{signal:AbortSignal.timeout(8000)});
+    if(!r.ok)return null;
+    const d=await r.json();
+    if(d.code||!d.close)return null;
+    const price=parseFloat(d.close),prev=parseFloat(d.previous_close);
+    return{
+      symbol:'QQQ',
+      price:price,
+      prevClose:prev,
+      change:price-prev,
+      changePct:((price-prev)/prev)*100,
+      high:parseFloat(d.high)||price,
+      low:parseFloat(d.low)||price,
+      open:parseFloat(d.open)||price,
+    };
+  }catch(e){console.warn('Market fail:',e.message);return null}
+}
+
+function renderMarket(data){
+  const el=document.getElementById('marketContent');
+  if(!data){el.innerHTML='<div class="market-unavailable">Market data unavailable — tap REFRESH to retry</div>';return}
+  const up=data.change>=0;
+  el.innerHTML=`
+    <div class="market-symbol">${data.symbol} <span class="tag">PROXY FOR NQ</span></div>
+    <div class="market-price">$${data.price.toFixed(2)}</div>
+    <div class="market-change ${up?'up':'down'}">
+      ${up?'▲':'▼'} ${up?'+':''}${data.change.toFixed(2)} (${up?'+':''}${data.changePct.toFixed(2)}%)
+    </div>
+    <div class="market-details">
+      <span>O ${data.open.toFixed(2)}</span>
+      <span>H ${data.high.toFixed(2)}</span>
+      <span>L ${data.low.toFixed(2)}</span>
+      <span>PC ${data.prevClose.toFixed(2)}</span>
+    </div>
+  `;
+}
+
+// ========== ECONOMIC CALENDAR ==========
+function buildCalendar(){
+  const today=new Date();
+  const events=[];
+  const weekly=[
+    {event:'Initial Jobless Claims',day:4,time:'5:30 AM PT',impact:'high'},
+    {event:'Continuing Jobless Claims',day:4,time:'5:30 AM PT',impact:'medium'},
+  ];
+  const major=[
+    {event:'FOMC Rate Decision',time:'11:00 AM PT',impact:'high'},
+    {event:'CPI (Consumer Price Index)',time:'5:30 AM PT',impact:'high'},
+    {event:'PPI (Producer Price Index)',time:'5:30 AM PT',impact:'high'},
+    {event:'Non-Farm Payrolls',time:'5:30 AM PT',impact:'high'},
+    {event:'PCE Price Index',time:'5:30 AM PT',impact:'high'},
+    {event:'GDP (Preliminary)',time:'5:30 AM PT',impact:'high'},
+    {event:'ISM Manufacturing PMI',time:'7:00 AM PT',impact:'high'},
+    {event:'ISM Services PMI',time:'7:00 AM PT',impact:'medium'},
+    {event:'Retail Sales',time:'5:30 AM PT',impact:'high'},
+    {event:'Consumer Confidence',time:'7:00 AM PT',impact:'medium'},
+    {event:'Durable Goods Orders',time:'5:30 AM PT',impact:'medium'},
+    {event:'Existing Home Sales',time:'7:00 AM PT',impact:'medium'},
+    {event:'New Home Sales',time:'7:00 AM PT',impact:'medium'},
+    {event:'Housing Starts',time:'5:30 AM PT',impact:'medium'},
+  ];
+  for(let i=0;i<7;i++){
+    const d=new Date(today);d.setDate(d.getDate()+i);
+    if(d.getDay()===0||d.getDay()===6)continue;
+    const label=d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+    weekly.forEach(w=>{if(d.getDay()===w.day)events.push({event:w.event,time:label+' · '+w.time,impact:w.impact})});
+    const idx=(d.getDate()+d.getMonth())%major.length;
+    if(events.length<12)events.push({event:major[idx].event,time:label+' · '+major[idx].time,impact:major[idx].impact});
+  }
+  return events.slice(0,12);
+}
+
+function renderCalendar(events){
+  const el=document.getElementById('calList');
+  if(!events.length){el.innerHTML='<div class="news-empty">No upcoming events</div>';return}
+  el.innerHTML=events.map(e=>`
+    <div class="cal-item">
+      <div class="cal-event">${e.event}</div>
+      <div class="cal-time">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+        ${e.time}
+        <span class="cal-impact ${e.impact}">${e.impact.toUpperCase()}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ========== LOAD ALL ==========
+async function loadAll(){
+  const btn=document.getElementById('refreshBtn');
+  btn.classList.add('loading');
+  btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> LOADING...';
+
+  try{
+    const [news,fg,market]=await Promise.allSettled([loadNews(),loadFG(),loadMarket()]);
+    renderNews(news.status==='fulfilled'?news.value:[]);
+    renderFG(fg.status==='fulfilled'?fg.value:null);
+    renderMarket(market.status==='fulfilled'?market.value:null);
+    renderCalendar(buildCalendar());
+    const now=new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true});
+    document.getElementById('lastUpdated').textContent=now;
+  }catch(e){console.error('Load error:',e)}
+
+  btn.classList.remove('loading');
+  btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> REFRESH';
+}
+
+// Auto-load on open
+loadAll();
+</script>
+</body>
+</html>
