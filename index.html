@@ -389,8 +389,37 @@ function renderFG(data){
 
 // ========== MARKET DATA ==========
 async function loadMarket(){
+  // Try real NQ futures first, fall back to QQQ ETF
+  const nq=await loadNQFutures();
+  if(nq)return nq;
+  return await loadQQQFallback();
+}
+
+async function loadNQFutures(){
   try{
-    // Twelve Data — free, direct CORS, no proxy needed
+    // Yahoo Finance NQ=F via allorigins /get endpoint (wraps in JSON contents)
+    const url='https://api.allorigins.win/get?url='+encodeURIComponent('https://query1.finance.yahoo.com/v8/finance/chart/NQ=F?interval=1d&range=1d');
+    const r=await fetch(url,{signal:AbortSignal.timeout(8000)});
+    if(!r.ok)return null;
+    const wrapper=await r.json();
+    const d=JSON.parse(wrapper.contents);
+    const meta=d.chart.result[0].meta;
+    return{
+      symbol:'NQ / MNQ',
+      tag:'LIVE FUTURES',
+      price:meta.regularMarketPrice,
+      prevClose:meta.chartPreviousClose||meta.previousClose,
+      change:meta.regularMarketPrice-(meta.chartPreviousClose||meta.previousClose),
+      changePct:((meta.regularMarketPrice-(meta.chartPreviousClose||meta.previousClose))/(meta.chartPreviousClose||meta.previousClose))*100,
+      high:meta.regularMarketDayHigh||meta.regularMarketPrice,
+      low:meta.regularMarketDayLow||meta.regularMarketPrice,
+      open:meta.regularMarketOpen||meta.regularMarketPrice,
+    };
+  }catch(e){console.warn('NQ futures fail:',e.message);return null}
+}
+
+async function loadQQQFallback(){
+  try{
     const r=await fetch('https://api.twelvedata.com/quote?symbol=QQQ&apikey=demo',{signal:AbortSignal.timeout(8000)});
     if(!r.ok)return null;
     const d=await r.json();
@@ -398,6 +427,7 @@ async function loadMarket(){
     const price=parseFloat(d.close),prev=parseFloat(d.previous_close);
     return{
       symbol:'NQ / MNQ',
+      tag:'VIA QQQ ETF',
       price:price,
       prevClose:prev,
       change:price-prev,
@@ -414,7 +444,7 @@ function renderMarket(data){
   if(!data){el.innerHTML='<div class="market-unavailable">Market data unavailable — tap REFRESH to retry</div>';return}
   const up=data.change>=0;
   el.innerHTML=`
-    <div class="market-symbol">${data.symbol} <span class="tag">VIA QQQ ETF</span></div>
+    <div class="market-symbol">${data.symbol} <span class="tag">${data.tag||'LIVE FUTURES'}</span></div>
     <div class="market-price">$${data.price.toFixed(2)}</div>
     <div class="market-change ${up?'up':'down'}">
       ${up?'▲':'▼'} ${up?'+':''}${data.change.toFixed(2)} (${up?'+':''}${data.changePct.toFixed(2)}%)
