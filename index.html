@@ -87,7 +87,7 @@ body{min-height:100dvh;background:var(--bg)}
 /* Market Card */
 .market-card{padding:16px}
 .market-symbol{font-size:11px;color:var(--text-muted);font-weight:600;letter-spacing:1px;display:flex;align-items:center;gap:8px}
-.market-symbol .tag{font-size:9px;background:var(--surface2);padding:2px 6px;border-radius:4px}
+.market-symbol .tag{font-size:9px;padding:2px 6px;border-radius:4px}
 .market-price{font-size:32px;font-weight:700;font-family:var(--font-mono);margin:4px 0;font-variant-numeric:tabular-nums}
 .market-change{font-size:14px;font-weight:600;font-family:var(--font-mono);display:inline-flex;align-items:center;gap:4px}
 .market-change.up{color:var(--green)}
@@ -213,7 +213,7 @@ body{min-height:100dvh;background:var(--bg)}
       <div class="card-header">
         <span class="icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="14" width="4" height="7"/><rect x="10" y="9" width="4" height="12"/><rect x="16" y="4" width="4" height="17"/></svg></span>
         INTRADAY VOLUME
-        <span class="badge" id="volBadge">NQ=F</span>
+        <span class="badge" id="volBadge">QQQ → NQ</span>
       </div>
       <div class="vol-card" id="volContent">
         <div class="skeleton" style="width:100%;height:120px"></div>
@@ -260,74 +260,24 @@ body{min-height:100dvh;background:var(--bg)}
 </main>
 
 <footer class="footer">
-  Data from Yahoo Finance, CNBC, MarketWatch & Investing.com · Not financial advice<br>
+  Data from Twelve Data, CNBC, MarketWatch & Investing.com · Not financial advice<br>
   <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer">Created with Perplexity Computer</a>
 </footer>
 
 <script>
-// ========== CORS PROXY — RACE ALL AT ONCE ==========
-const PROXIES=[
-  u=>'https://api.allorigins.win/raw?url='+encodeURIComponent(u),
-  u=>'https://corsproxy.io/?url='+encodeURIComponent(u),
-  u=>'https://api.codetabs.com/v1/proxy?quest='+encodeURIComponent(u),
-];
-
-// Promise that rejects after ms (safe timeout wrapper)
-function timeout(ms){return new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),ms))}
-
-// Race all proxies — first good response wins
-async function proxyFetch(url,ms=5000){
+// ========== SAFE FETCH — with timeout via AbortController ==========
+async function safeFetch(url,ms=5000){
   const ctrl=new AbortController();
   const timer=setTimeout(()=>ctrl.abort(),ms);
   try{
-    const r=await Promise.any(PROXIES.map(p=>
-      fetch(p(url),{signal:ctrl.signal}).then(r=>{if(!r.ok)throw new Error(r.status);return r})
-    ));
+    const r=await fetch(url,{signal:ctrl.signal});
     clearTimeout(timer);
+    if(!r.ok)throw new Error('HTTP '+r.status);
     return r;
   }catch(e){clearTimeout(timer);return null}
 }
 
-// Single attempt with hard timeout wrapper (never hangs)
-async function safeFetch(url,ms=5000){
-  try{return await Promise.race([proxyFetch(url,ms),timeout(ms+500)])}catch(e){return null}
-}
-
-// ========== NEWS ==========
-function stripHtml(s){
-  return s.replace(/<[^>]*>/g,'').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#039;/g,"'").replace(/&apos;/g,"'").replace(/&#x2019;/g,'\u2019').replace(/&#x2014;/g,'\u2014').replace(/&nbsp;/g,' ').replace(/[\u200B-\u200D\u2060\uFEFF]/g,'').trim();
-}
-function extractCDATA(s){const m=s.match(/<!\[CDATA\[([\s\S]*?)\]\]>/);return m?m[1]:s}
-function parseRSS(xml,src){
-  const items=[];
-  const re=/<item>([\s\S]*?)<\/item>/g;let m;
-  while((m=re.exec(xml))!==null){
-    const x=m[1];
-    const t=x.match(/<title>([\s\S]*?)<\/title>/);
-    const l=x.match(/<link>([\s\S]*?)<\/link>/);
-    const d=x.match(/<pubDate>([\s\S]*?)<\/pubDate>/);
-    const desc=x.match(/<description>([\s\S]*?)<\/description>/);
-    if(t&&l){
-      items.push({
-        title:stripHtml(extractCDATA(t[1].trim())),
-        link:extractCDATA(l[1].trim()),
-        pubDate:d?d[1].trim():new Date().toUTCString(),
-        desc:desc?stripHtml(extractCDATA(desc[1].trim())).slice(0,200):'',
-        source:src
-      });
-    }
-  }
-  return items;
-}
-
-async function fetchRSS(url,src){
-  try{
-    const r=await proxyFetch(url);
-    if(!r)return[];
-    return parseRSS(await r.text(),src);
-  }catch(e){console.warn('RSS fail:',src,e.message);return[]}
-}
-
+// ========== NEWS via rss2json.com (native CORS, no proxy needed) ==========
 const FEEDS=[
   {url:'https://feeds.content.dowjones.io/public/rss/mw_topstories',name:'MarketWatch'},
   {url:'https://feeds.content.dowjones.io/public/rss/mw_marketpulse',name:'MarketWatch'},
@@ -336,10 +286,30 @@ const FEEDS=[
   {url:'https://www.investing.com/rss/news.rss',name:'Investing.com'},
 ];
 
+function stripHtml(s){
+  return s.replace(/<[^>]*>/g,'').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#039;/g,"'").replace(/&apos;/g,"'").replace(/&#x2019;/g,'\u2019').replace(/&#x2014;/g,'\u2014').replace(/&nbsp;/g,' ').replace(/[\u200B-\u200D\u2060\uFEFF]/g,'').trim();
+}
+
+async function fetchFeed(feedUrl,name){
+  try{
+    const r=await safeFetch('https://api.rss2json.com/v1/api.json?rss_url='+encodeURIComponent(feedUrl),5000);
+    if(!r)return[];
+    const d=await r.json();
+    if(d.status!=='ok'||!d.items)return[];
+    return d.items.map(i=>({
+      title:stripHtml(i.title||''),
+      link:i.link||'',
+      pubDate:i.pubDate||new Date().toISOString(),
+      desc:stripHtml(i.description||'').slice(0,200),
+      source:name
+    }));
+  }catch(e){console.warn('Feed fail:',name,e.message);return[]}
+}
+
 const KW=['nasdaq','nq','futures','tech','fed','fomc','cpi','inflation','rate','jobs','employment','gdp','market','stock','s&p','dow','earnings','apple','microsoft','google','amazon','nvidia','meta','tesla','ai','semiconductor','chip','trade','tariff','treasury','bond','yield','rally','sell','bear','bull','volatility','vix','economy','recession','growth','profit','revenue','ipo','sec','regulation','bank','oil','crypto','bitcoin','etf','index','pre-market','premarket','wall street','investor','trading','stocks','shares','equity','quarter','billion','million','percent','forecast','outlook','risk'];
 
 async function loadNews(){
-  const results=await Promise.allSettled(FEEDS.map(f=>fetchRSS(f.url,f.name)));
+  const results=await Promise.allSettled(FEEDS.map(f=>fetchFeed(f.url,f.name)));
   let all=[];
   results.forEach(r=>{if(r.status==='fulfilled')all.push(...r.value)});
   const seen=new Set();
@@ -356,6 +326,7 @@ async function loadNews(){
 
 function timeAgo(dateStr){
   const diff=Math.floor((Date.now()-new Date(dateStr).getTime())/1000);
+  if(diff<0||isNaN(diff))return 'Just now';
   if(diff<60)return 'Just now';
   if(diff<3600){const m=Math.floor(diff/60);return m===1?'1 min ago':m+' min ago'}
   if(diff<86400){const h=Math.floor(diff/3600);return h===1?'1 hr ago':h+' hrs ago'}
@@ -363,28 +334,20 @@ function timeAgo(dateStr){
 }
 
 // ========== NQ SENTIMENT ENGINE ==========
-// Bearish (red) — likely to push NQ down hard
 const BEAR_HEAVY=['crash','recession','rate hike','hawkish','sell-off','selloff','plunge','tank','collapse','downgrade','default','layoffs','mass layoff','bear market','circuit breaker','margin call','capitulation','black swan','contagion','bank failure','liquidity crisis','debt ceiling','government shutdown'];
 const BEAR_MOD=['decline','drop','fall','slip','slide','lose','loss','weak','miss','disappoint','warn','fear','concern','risk','threat','tariff','sanctions','inflation rise','inflation hot','inflation high','cpi hot','cpi high','fed rate','tighten','hawkish','overvalued','bubble','correction','pullback','resistance','breakdown','cut guidance','lower guidance','miss estimate','below expect','revenue miss','earnings miss','profit warn','investigate','lawsuit','antitrust','probe','subpoena','hack','breach','outage'];
-// Bullish (green) — likely to push NQ up
 const BULL_HEAVY=['rate cut','dovish','rally','surge','soar','breakout','all-time high','record high','ath','stimulus','qe','easing','goldilocks','soft landing','beat estimate','blowout earnings','strong guidance','raise guidance','above expect'];
 const BULL_MOD=['rise','gain','climb','jump','up','advance','recover','rebound','bounce','growth','strong','beat','optimism','bullish','buy','upgrade','outperform','positive','boost','expand','accelerate','momentum','support','innovation','breakthrough','deal','partnership','acquisition','buyback','dividend','split','approval','launch'];
-// NQ-specific amplifiers — if headline mentions these AND has sentiment, impact is higher
 const NQ_DIRECT=['nasdaq','nq','mnq','qqq','tech','nvidia','nvda','apple','aapl','microsoft','msft','google','goog','amazon','amzn','meta','tesla','tsla','semiconductor','chip','mag seven','magnificent','faang','ai ','artificial intelligence','fed ','fomc','powell','cpi','pce','core inflation','nonfarm','non-farm','payroll','gdp','interest rate','10-year','treasury yield'];
 
 function scoreSentiment(title,desc){
   const t=(title+' '+(desc||'')).toLowerCase();
   let score=0;
-  // Heavy signals
   BEAR_HEAVY.forEach(k=>{if(t.includes(k))score-=3});
   BULL_HEAVY.forEach(k=>{if(t.includes(k))score+=3});
-  // Moderate signals
   BEAR_MOD.forEach(k=>{if(t.includes(k))score-=1});
   BULL_MOD.forEach(k=>{if(t.includes(k))score+=1});
-  // NQ relevance amplifier
-  let nqRelevant=NQ_DIRECT.some(k=>t.includes(k));
-  if(nqRelevant)score=score*1.5;
-  // Classify
+  if(NQ_DIRECT.some(k=>t.includes(k)))score=score*1.5;
   const absScore=Math.abs(score);
   if(absScore>=3)return{level:'high',label:score<0?'BEARISH':'BULLISH',cls:score<0?'high':'low'};
   if(absScore>=1)return{level:'med',label:score<0?'MIXED/BEAR':'MIXED/BULL',cls:'med'};
@@ -406,149 +369,99 @@ function renderNews(items){
   }).join('');
 }
 
-// ========== NQ COMPOSITE SIGNAL ==========
-// Combines: momentum, VIX, volume, range position into one bull/bear score
-let lastSignalData=null;
+// ========== MARKET DATA — Twelve Data QQQ → NQ conversion ==========
+const NQ_QQQ_RATIO=41.32;
 
-async function loadSignal(marketData,volData){
+async function loadMarket(){
   try{
-    // Get VIX
-    let vix=null;
-    try{
-      const r=await safeFetch('https://query2.finance.yahoo.com/v8/finance/chart/^VIX?interval=1d&range=2d',5000);
-      if(r){const d=await r.json();vix=d.chart.result[0].meta.regularMarketPrice;}
-    }catch(e){}
-
-    if(!marketData)return null;
-    const price=marketData.price,prev=marketData.prevClose,hi=marketData.high,lo=marketData.low;
-    
-    // Factor 1: Momentum (price vs prev close) — weight 35%
-    const momPct=((price-prev)/prev)*100;
-    const momScore=Math.max(-100,Math.min(100,momPct*25)); // ±4% = ±100
-    
-    // Factor 2: Range position (where price sits in today's range) — weight 20%
-    const range=hi-lo;
-    const rangePos=range>0?((price-lo)/range)*200-100:0; // -100 to +100
-    
-    // Factor 3: VIX (inverted — low VIX = bullish) — weight 25%
-    let vixScore=0;
-    if(vix!==null){
-      if(vix<15)vixScore=80;
-      else if(vix<20)vixScore=40;
-      else if(vix<25)vixScore=0;
-      else if(vix<30)vixScore=-40;
-      else vixScore=-80;
-    }
-    
-    // Factor 4: Volume conviction — weight 20%
-    let volScore=0;
-    if(volData&&volData.avgVol>0){
-      const volRatio=volData.totalVol/volData.avgVol;
-      volScore=(momPct>=0?1:-1)*Math.min(100,Math.max(-100,(volRatio-1)*100));
-    }
-    
-    // Weighted composite
-    const composite=Math.round(momScore*0.35+rangePos*0.20+vixScore*0.25+volScore*0.20);
-    const clamped=Math.max(-100,Math.min(100,composite));
-    
-    lastSignalData={
-      score:clamped,
-      factors:{
-        momentum:{val:momPct,score:momScore},
-        range:{val:range>0?((price-lo)/range)*100:50,score:rangePos},
-        vix:{val:vix,score:vixScore},
-        volume:{ratio:volData?volData.totalVol/volData.avgVol:null,score:volScore}
-      }
+    const r=await safeFetch('https://api.twelvedata.com/quote?symbol=QQQ&apikey=demo',5000);
+    if(!r)return null;
+    const d=await r.json();
+    if(d.code||!d.close)return null;
+    const qqqPrice=parseFloat(d.close),qqqPrev=parseFloat(d.previous_close);
+    const price=Math.round(qqqPrice*NQ_QQQ_RATIO*100)/100;
+    const prev=Math.round(qqqPrev*NQ_QQQ_RATIO*100)/100;
+    return{
+      symbol:'NQ / MNQ',
+      tag:'EST. VIA QQQ',
+      price,prevClose:prev,
+      change:price-prev,
+      changePct:((price-prev)/prev)*100,
+      high:Math.round(parseFloat(d.high)*NQ_QQQ_RATIO*100)/100||price,
+      low:Math.round(parseFloat(d.low)*NQ_QQQ_RATIO*100)/100||price,
+      open:Math.round(parseFloat(d.open)*NQ_QQQ_RATIO*100)/100||price,
     };
-    return lastSignalData;
-  }catch(e){console.warn('Signal fail:',e.message);return null}
+  }catch(e){console.warn('Market fail:',e.message);return null}
 }
 
-function renderSignal(data){
-  const el=document.getElementById('signalContent');
-  if(!data){el.innerHTML='<div style="padding:20px;color:var(--text-muted);font-size:13px">Signal unavailable</div>';return}
-  const s=data.score;
-  let label,color;
-  if(s>=60){label='STRONG BULL';color='var(--green)'}
-  else if(s>=25){label='BULLISH';color='var(--green)'}
-  else if(s>=-25){label='NEUTRAL';color='var(--yellow)'}
-  else if(s>=-60){label='BEARISH';color='var(--red)'}
-  else{label='STRONG BEAR';color='var(--red)'}
-  
-  const f=data.factors;
-  const cls=(v)=>v>0?'up':v<0?'down':'flat';
+function renderMarket(data){
+  const el=document.getElementById('marketContent');
+  if(!data){el.innerHTML='<div class="market-unavailable">Market data unavailable — tap REFRESH to retry</div>';return}
+  const up=data.change>=0;
   el.innerHTML=`
-    <div class="signal-label">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12h4l3-9 4 18 3-9h4"/></svg>
-      NQ SIGNAL
+    <div class="market-symbol">${data.symbol} <span class="tag" style="background:rgba(243,156,18,0.15);color:var(--orange)">${data.tag}</span></div>
+    <div class="market-price">$${data.price.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+    <div class="market-change ${up?'up':'down'}">
+      ${up?'▲':'▼'} ${up?'+':''}${data.change.toFixed(2)} (${up?'+':''}${data.changePct.toFixed(2)}%)
     </div>
-    <div class="gauge-wrap">
-      <svg viewBox="0 0 170 100">
-        <defs><linearGradient id="gg" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#e74c3c"/><stop offset="25%" stop-color="#f39c12"/><stop offset="50%" stop-color="#f1c40f"/><stop offset="75%" stop-color="#2ecc71"/><stop offset="100%" stop-color="#27ae60"/></linearGradient></defs>
-        <path d="M 15 85 A 70 70 0 0 1 155 85" fill="none" stroke="#252836" stroke-width="12" stroke-linecap="round"/>
-        <path d="M 15 85 A 70 70 0 0 1 155 85" fill="none" stroke="url(#gg)" stroke-width="8" stroke-linecap="round" opacity="0.8"/>
-        ${(()=>{
-          // Needle: -100=left(red π), 0=top(center π/2), +100=right(green 0)
-          const angle=Math.PI*(1-(s+100)/200);
-          const nx=85+60*Math.cos(angle),ny=85-60*Math.sin(angle);
-          return `<line x1="85" y1="85" x2="${nx}" y2="${ny}" stroke="var(--text)" stroke-width="2.5" stroke-linecap="round"/><circle cx="85" cy="85" r="4" fill="var(--text)"/>`;        })()}
-        <text x="85" y="65" text-anchor="middle" fill="${color}" font-size="20" font-weight="700" font-family="var(--font-mono)">${s>0?'+':''}${s}</text>
-      </svg>
-    </div>
-    <div class="signal-class" style="color:${color}">${label}</div>
-    <div class="signal-factors">
-      <div class="signal-factor"><span>Momentum</span><span class="val ${cls(f.momentum.val)}">${f.momentum.val>=0?'+':''}${f.momentum.val.toFixed(2)}%</span></div>
-      <div class="signal-factor"><span>VIX</span><span class="val ${f.vix.val?cls(-f.vix.score):'flat'}">${f.vix.val?f.vix.val.toFixed(1):'N/A'}</span></div>
-      <div class="signal-factor"><span>Range Pos</span><span class="val ${cls(f.range.score)}">${f.range.val.toFixed(0)}%</span></div>
-      <div class="signal-factor"><span>Vol Ratio</span><span class="val ${f.volume.ratio?cls(f.volume.score):'flat'}">${f.volume.ratio?f.volume.ratio.toFixed(1)+'x':'N/A'}</span></div>
+    <div class="market-details">
+      <span>O ${data.open.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+      <span>H ${data.high.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+      <span>L ${data.low.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+      <span>PC ${data.prevClose.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
     </div>
   `;
 }
 
-// ========== INTRADAY VOLUME CHART ==========
-let lastVolData=null;
-
+// ========== INTRADAY VOLUME — Twelve Data QQQ 5-min bars ==========
 async function loadVolume(){
   try{
-    const r=await safeFetch('https://query2.finance.yahoo.com/v8/finance/chart/NQ=F?interval=5m&range=1d',5000);
+    const r=await safeFetch('https://api.twelvedata.com/time_series?symbol=QQQ&interval=5min&outputsize=78&apikey=demo',5000);
     if(!r)return null;
     const d=await r.json();
-    if(!d.chart||!d.chart.result)return null;
-    const result=d.chart.result[0];
-    const ts=result.timestamp||[];
-    const vols=result.indicators.quote[0].volume||[];
-    const closes=result.indicators.quote[0].close||[];
-    
+    if(d.code||!d.values||!d.values.length)return null;
+    // Values come newest-first, reverse for chronological order
+    const vals=d.values.slice().reverse();
+    // Filter to only today's bars
+    const today=new Date().toISOString().slice(0,10);
+    const todayBars=vals.filter(v=>v.datetime.startsWith(today));
+    const useBars=todayBars.length>=3?todayBars:vals.slice(-30); // fallback to last 30 bars
+
     const bars=[];
     let totalVol=0;
-    for(let i=0;i<ts.length;i++){
-      const v=vols[i]||0;
-      const c=closes[i];
-      const prevC=i>0?closes[i-1]:c;
+    for(let i=0;i<useBars.length;i++){
+      const v=parseInt(useBars[i].volume)||0;
+      const c=parseFloat(useBars[i].close);
+      const prevC=i>0?parseFloat(useBars[i-1].close):c;
       totalVol+=v;
-      bars.push({time:ts[i],vol:v,close:c,up:c>=prevC});
+      bars.push({time:useBars[i].datetime,vol:v,close:c,up:c>=prevC});
     }
-    
-    // Average volume per bar (rough baseline)
     const nonZero=bars.filter(b=>b.vol>0);
     const avgVol=nonZero.length?nonZero.reduce((s,b)=>s+b.vol,0)/nonZero.length:0;
-    
-    lastVolData={bars,totalVol,avgVol};
-    return lastVolData;
+    return{bars,totalVol,avgVol};
   }catch(e){console.warn('Volume fail:',e.message);return null}
 }
 
 function renderVolume(data){
   const el=document.getElementById('volContent');
   if(!data||!data.bars.length){el.innerHTML='<div style="padding:20px;color:var(--text-muted);font-size:13px">Volume data unavailable</div>';return}
-  
   const bars=data.bars.filter(b=>b.vol>0);
   if(!bars.length){el.innerHTML='<div style="padding:20px;color:var(--text-muted);font-size:13px">Market not open yet</div>';return}
   const maxVol=Math.max(...bars.map(b=>b.vol));
-  
   const fmtVol=(v)=>v>=1e6?(v/1e6).toFixed(1)+'M':v>=1e3?(v/1e3).toFixed(0)+'K':v;
-  const fmtTime=(ts)=>new Date(ts*1000).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true});
-  
+  const fmtTime=(dt)=>{
+    // dt is "2026-03-26 10:45:00" format
+    try{
+      const parts=dt.split(' ');
+      if(parts.length<2)return dt;
+      const t=parts[1].split(':');
+      let h=parseInt(t[0]),m=t[1];
+      const ampm=h>=12?'PM':'AM';
+      if(h>12)h-=12;if(h===0)h=12;
+      return h+':'+m+' '+ampm;
+    }catch(e){return dt}
+  };
+
   el.innerHTML=`
     <div class="vol-stat">
       <span>Total <span class="val">${fmtVol(data.totalVol)}</span></span>
@@ -570,98 +483,92 @@ function renderVolume(data){
   `;
 }
 
-// ========== MARKET DATA ==========
-// NQ/QQQ ratio — very stable because QQQ tracks Nasdaq-100 at ~1/41 the value
-const NQ_QQQ_RATIO=41.32;
-
-async function loadMarket(){
-  // Try real NQ futures via proxy, then estimate from QQQ if that fails
-  const nq=await loadNQFutures();
-  if(nq)return nq;
-  return await loadNQFromQQQ();
-}
-
-async function loadNQFutures(){
+// ========== NQ COMPOSITE SIGNAL ==========
+async function loadSignal(marketData,volData){
   try{
-    // Single attempt per Yahoo endpoint, race them — hard 6s ceiling
-    const urls=[
-      'https://query2.finance.yahoo.com/v8/finance/chart/NQ=F?range=1d&interval=1d',
-      'https://query1.finance.yahoo.com/v8/finance/chart/NQ=F?interval=1d&range=1d',
-    ];
-    const attempts=urls.map(u=>safeFetch(u,5000).then(async r=>{
-      if(!r)throw new Error('no response');
-      const d=await r.json();
-      if(!d.chart||!d.chart.result)throw new Error('bad data');
-      return d;
-    }));
-    const d=await Promise.race([
-      Promise.any(attempts).catch(()=>null),
-      timeout(8000).catch(()=>null)
-    ]);
-    if(!d)return null;
-    const meta=d.chart.result[0].meta;
-    const price=meta.regularMarketPrice;
-    const prev=meta.chartPreviousClose||meta.previousClose;
-    if(!price||price<1000)return null;
+    // Get Fear & Greed index as VIX proxy (direct CORS from alternative.me)
+    let fearGreed=null;
+    try{
+      const r=await safeFetch('https://api.alternative.me/fng/?limit=1',3000);
+      if(r){const d=await r.json();fearGreed=parseInt(d.data[0].value);}
+    }catch(e){}
+
+    if(!marketData)return null;
+    const price=marketData.price,prev=marketData.prevClose,hi=marketData.high,lo=marketData.low;
+
+    // Factor 1: Momentum (price vs prev close) — weight 35%
+    const momPct=((price-prev)/prev)*100;
+    const momScore=Math.max(-100,Math.min(100,momPct*25));
+
+    // Factor 2: Range position — weight 20%
+    const range=hi-lo;
+    const rangePos=range>0?((price-lo)/range)*200-100:0;
+
+    // Factor 3: Fear & Greed (0=extreme fear, 100=extreme greed) — weight 25%
+    let fgScore=0;
+    if(fearGreed!==null){
+      fgScore=(fearGreed-50)*2; // maps 0→-100, 50→0, 100→+100
+    }
+
+    // Factor 4: Volume conviction — weight 20%
+    let volScore=0;
+    if(volData&&volData.avgVol>0){
+      const volRatio=volData.totalVol/(volData.avgVol*volData.bars.length||1);
+      volScore=(momPct>=0?1:-1)*Math.min(100,Math.max(-100,(volRatio-0.8)*200));
+    }
+
+    const composite=Math.round(momScore*0.35+rangePos*0.20+fgScore*0.25+volScore*0.20);
+    const clamped=Math.max(-100,Math.min(100,composite));
+
     return{
-      symbol:'NQ / MNQ',
-      tag:'LIVE FUTURES',
-      price:price,
-      prevClose:prev,
-      change:price-prev,
-      changePct:((price-prev)/prev)*100,
-      high:meta.regularMarketDayHigh||price,
-      low:meta.regularMarketDayLow||price,
-      open:meta.regularMarketOpen||price,
+      score:clamped,
+      factors:{
+        momentum:{val:momPct,score:momScore},
+        range:{val:range>0?((price-lo)/range)*100:50,score:rangePos},
+        fearGreed:{val:fearGreed,score:fgScore},
+        volume:{ratio:volData?volData.totalVol/(volData.avgVol*volData.bars.length||1):null,score:volScore}
+      }
     };
-  }catch(e){console.warn('NQ futures fail:',e.message);return null}
+  }catch(e){console.warn('Signal fail:',e.message);return null}
 }
 
-// Compute approximate NQ price from QQQ ETF (reliable direct CORS API)
-async function loadNQFromQQQ(){
-  try{
-    const ctrl=new AbortController();
-    const t=setTimeout(()=>ctrl.abort(),5000);
-    const r=await fetch('https://api.twelvedata.com/quote?symbol=QQQ&apikey=demo',{signal:ctrl.signal});
-    clearTimeout(t);
-    if(!r.ok)return null;
-    const d=await r.json();
-    if(d.code||!d.close)return null;
-    const qqqPrice=parseFloat(d.close),qqqPrev=parseFloat(d.previous_close);
-    // Convert QQQ to NQ using stable ratio
-    const price=Math.round(qqqPrice*NQ_QQQ_RATIO*100)/100;
-    const prev=Math.round(qqqPrev*NQ_QQQ_RATIO*100)/100;
-    return{
-      symbol:'NQ / MNQ',
-      tag:'EST. VIA QQQ',
-      price:price,
-      prevClose:prev,
-      change:price-prev,
-      changePct:((price-prev)/prev)*100,
-      high:Math.round(parseFloat(d.high)*NQ_QQQ_RATIO*100)/100||price,
-      low:Math.round(parseFloat(d.low)*NQ_QQQ_RATIO*100)/100||price,
-      open:Math.round(parseFloat(d.open)*NQ_QQQ_RATIO*100)/100||price,
-    };
-  }catch(e){console.warn('QQQ fallback fail:',e.message);return null}
-}
+function renderSignal(data){
+  const el=document.getElementById('signalContent');
+  if(!data){el.innerHTML='<div style="padding:20px;color:var(--text-muted);font-size:13px">Signal unavailable</div>';return}
+  const s=data.score;
+  let label,color;
+  if(s>=60){label='STRONG BULL';color='var(--green)'}
+  else if(s>=25){label='BULLISH';color='var(--green)'}
+  else if(s>=-25){label='NEUTRAL';color='var(--yellow)'}
+  else if(s>=-60){label='BEARISH';color='var(--red)'}
+  else{label='STRONG BEAR';color='var(--red)'}
 
-function renderMarket(data){
-  const el=document.getElementById('marketContent');
-  if(!data){el.innerHTML='<div class="market-unavailable">Market data unavailable — tap REFRESH to retry</div>';return}
-  const up=data.change>=0;
-  const isLive=data.tag==='LIVE FUTURES';
-  const tagStyle=isLive?'background:rgba(46,204,113,0.15);color:var(--green)':'background:rgba(243,156,18,0.15);color:var(--orange)';
+  const f=data.factors;
+  const cls=(v)=>v>0?'up':v<0?'down':'flat';
   el.innerHTML=`
-    <div class="market-symbol">${data.symbol} <span class="tag" style="${tagStyle}">${data.tag||'LIVE FUTURES'}</span></div>
-    <div class="market-price">$${data.price.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
-    <div class="market-change ${up?'up':'down'}">
-      ${up?'▲':'▼'} ${up?'+':''}${data.change.toFixed(2)} (${up?'+':''}${data.changePct.toFixed(2)}%)
+    <div class="signal-label">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12h4l3-9 4 18 3-9h4"/></svg>
+      NQ SIGNAL
     </div>
-    <div class="market-details">
-      <span>O ${data.open.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
-      <span>H ${data.high.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
-      <span>L ${data.low.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
-      <span>PC ${data.prevClose.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+    <div class="gauge-wrap">
+      <svg viewBox="0 0 170 100">
+        <defs><linearGradient id="gg" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#e74c3c"/><stop offset="25%" stop-color="#f39c12"/><stop offset="50%" stop-color="#f1c40f"/><stop offset="75%" stop-color="#2ecc71"/><stop offset="100%" stop-color="#27ae60"/></linearGradient></defs>
+        <path d="M 15 85 A 70 70 0 0 1 155 85" fill="none" stroke="#252836" stroke-width="12" stroke-linecap="round"/>
+        <path d="M 15 85 A 70 70 0 0 1 155 85" fill="none" stroke="url(#gg)" stroke-width="8" stroke-linecap="round" opacity="0.8"/>
+        ${(()=>{
+          const angle=Math.PI*(1-(s+100)/200);
+          const nx=85+60*Math.cos(angle),ny=85-60*Math.sin(angle);
+          return '<line x1="85" y1="85" x2="'+nx+'" y2="'+ny+'" stroke="var(--text)" stroke-width="2.5" stroke-linecap="round"/><circle cx="85" cy="85" r="4" fill="var(--text)"/>';
+        })()}
+        <text x="85" y="65" text-anchor="middle" fill="${color}" font-size="20" font-weight="700" font-family="var(--font-mono)">${s>0?'+':''}${s}</text>
+      </svg>
+    </div>
+    <div class="signal-class" style="color:${color}">${label}</div>
+    <div class="signal-factors">
+      <div class="signal-factor"><span>Momentum</span><span class="val ${cls(f.momentum.val)}">${f.momentum.val>=0?'+':''}${f.momentum.val.toFixed(2)}%</span></div>
+      <div class="signal-factor"><span>Fear/Greed</span><span class="val ${f.fearGreed.val!==null?cls(f.fearGreed.score):'flat'}">${f.fearGreed.val!==null?f.fearGreed.val+'/100':'N/A'}</span></div>
+      <div class="signal-factor"><span>Range Pos</span><span class="val ${cls(f.range.score)}">${f.range.val.toFixed(0)}%</span></div>
+      <div class="signal-factor"><span>Vol Ratio</span><span class="val ${f.volume.ratio!==null?cls(f.volume.score):'flat'}">${f.volume.ratio!==null?f.volume.ratio.toFixed(2)+'x':'N/A'}</span></div>
     </div>
   `;
 }
@@ -716,7 +623,7 @@ function renderCalendar(events){
   `).join('');
 }
 
-// ========== LOAD ALL — RENDER AS EACH ARRIVES ==========
+// ========== LOAD ALL ==========
 let isLoading=false;
 async function loadAll(){
   if(isLoading)return;
@@ -735,16 +642,14 @@ async function loadAll(){
   }
 
   try{
-    // Fire all in parallel, each with its own error handling
     const newsP=loadNews().then(v=>renderNews(v||[])).catch(()=>renderNews([]));
     const volP=loadVolume().then(v=>{renderVolume(v);return v}).catch(()=>{renderVolume(null);return null});
     const mktP=loadMarket().then(v=>{renderMarket(v);return v}).catch(()=>{renderMarket(null);return null});
     const sigP=Promise.all([mktP,volP]).then(([m,v])=>loadSignal(m,v).then(s=>renderSignal(s))).catch(()=>renderSignal(null));
 
-    // Wait for everything, but hard-cap at 15 seconds no matter what
     await Promise.race([
       Promise.allSettled([newsP,volP,mktP,sigP]),
-      new Promise(ok=>setTimeout(ok,15000))
+      new Promise(ok=>setTimeout(ok,12000))
     ]);
   }catch(e){console.warn('loadAll error:',e)}
 
