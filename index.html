@@ -490,10 +490,10 @@ function renderSignal(data){
         <path d="M 15 85 A 70 70 0 0 1 155 85" fill="none" stroke="#252836" stroke-width="12" stroke-linecap="round"/>
         <path d="M 15 85 A 70 70 0 0 1 155 85" fill="none" stroke="url(#gg)" stroke-width="8" stroke-linecap="round" opacity="0.8"/>
         ${(()=>{
-          const angle=(((s+100)/200)*180-90)*(Math.PI/180);
-          const nx=85+60*Math.cos(angle),ny=85+60*Math.sin(angle);
-          return `<line x1="85" y1="85" x2="${nx}" y2="${ny}" stroke="var(--text)" stroke-width="2.5" stroke-linecap="round"/><circle cx="85" cy="85" r="4" fill="var(--text)"/>`;
-        })()}
+          // Needle: -100=left(red π), 0=top(center π/2), +100=right(green 0)
+          const angle=Math.PI*(1-(s+100)/200);
+          const nx=85+60*Math.cos(angle),ny=85-60*Math.sin(angle);
+          return `<line x1="85" y1="85" x2="${nx}" y2="${ny}" stroke="var(--text)" stroke-width="2.5" stroke-linecap="round"/><circle cx="85" cy="85" r="4" fill="var(--text)"/>`;        })()}
         <text x="85" y="65" text-anchor="middle" fill="${color}" font-size="20" font-weight="700" font-family="var(--font-mono)">${s>0?'+':''}${s}</text>
       </svg>
     </div>
