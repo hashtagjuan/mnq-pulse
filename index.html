@@ -267,13 +267,13 @@ body{min-height:100dvh;background:var(--bg)}
 <script>
 // ========== CORS PROXY — RACE ALL AT ONCE ==========
 const PROXIES=[
-  u=>'https://corsproxy.io/?url='+encodeURIComponent(u),
   u=>'https://api.allorigins.win/raw?url='+encodeURIComponent(u),
+  u=>'https://corsproxy.io/?url='+encodeURIComponent(u),
   u=>'https://api.codetabs.com/v1/proxy?quest='+encodeURIComponent(u),
 ];
 
 // Race all proxies — first good response wins
-async function proxyFetch(url,timeout=4000){
+async function proxyFetch(url,timeout=6000){
   const ctrl=new AbortController();
   const timer=setTimeout(()=>ctrl.abort(),timeout);
   try{
@@ -283,6 +283,16 @@ async function proxyFetch(url,timeout=4000){
     clearTimeout(timer);
     return r;
   }catch(e){clearTimeout(timer);return null}
+}
+
+// Retry proxy fetch with delay between attempts
+async function proxyFetchRetry(url,retries=2,timeout=6000){
+  for(let i=0;i<retries;i++){
+    const r=await proxyFetch(url,timeout);
+    if(r)return r;
+    if(i<retries-1)await new Promise(ok=>setTimeout(ok,500));
+  }
+  return null;
 }
 
 // ========== NEWS ==========
@@ -407,7 +417,7 @@ async function loadSignal(marketData,volData){
     // Get VIX
     let vix=null;
     try{
-      const r=await proxyFetch('https://query1.finance.yahoo.com/v8/finance/chart/^VIX?interval=1d&range=2d',4000);
+      const r=await proxyFetchRetry('https://query2.finance.yahoo.com/v8/finance/chart/^VIX?interval=1d&range=2d',2,6000);
       if(r){const d=await r.json();vix=d.chart.result[0].meta.regularMarketPrice;}
     }catch(e){}
 
@@ -502,7 +512,7 @@ let lastVolData=null;
 
 async function loadVolume(){
   try{
-    const r=await proxyFetch('https://query1.finance.yahoo.com/v8/finance/chart/NQ=F?interval=5m&range=1d',5000);
+    const r=await proxyFetchRetry('https://query2.finance.yahoo.com/v8/finance/chart/NQ=F?interval=5m&range=1d',2,6000);
     if(!r)return null;
     const d=await r.json();
     if(!d.chart||!d.chart.result)return null;
@@ -563,25 +573,35 @@ function renderVolume(data){
 }
 
 // ========== MARKET DATA ==========
+// NQ/QQQ ratio — very stable because QQQ tracks Nasdaq-100 at ~1/41 the value
+const NQ_QQQ_RATIO=41.32;
+
 async function loadMarket(){
-  // Try real NQ futures first, fall back to QQQ ETF
+  // Try real NQ futures via proxy, then estimate from QQQ if that fails
   const nq=await loadNQFutures();
   if(nq)return nq;
-  return await loadQQQFallback();
+  return await loadNQFromQQQ();
 }
 
 async function loadNQFutures(){
   try{
-    // Race all proxies for Yahoo NQ=F futures data
-    const yahooUrl='https://query1.finance.yahoo.com/v8/finance/chart/NQ=F?interval=1d&range=1d';
-    const r=await proxyFetch(yahooUrl,5000);
-    if(!r)return null;
-    const d=await r.json();
-    if(!d.chart||!d.chart.result)return null;
+    // Try both Yahoo endpoints in parallel via proxy with retry
+    const urls=[
+      'https://query2.finance.yahoo.com/v8/finance/chart/NQ=F?range=1d&interval=1d',
+      'https://query1.finance.yahoo.com/v8/finance/chart/NQ=F?interval=1d&range=1d',
+    ];
+    const attempts=urls.map(u=>proxyFetchRetry(u,2,6000).then(async r=>{
+      if(!r)throw new Error('no response');
+      const d=await r.json();
+      if(!d.chart||!d.chart.result)throw new Error('bad data');
+      return d;
+    }));
+    const d=await Promise.any(attempts).catch(()=>null);
+    if(!d)return null;
     const meta=d.chart.result[0].meta;
     const price=meta.regularMarketPrice;
     const prev=meta.chartPreviousClose||meta.previousClose;
-    if(!price||price<1000)return null; // sanity check: NQ should be >1000
+    if(!price||price<1000)return null; // sanity: NQ should be >1000
     return{
       symbol:'NQ / MNQ',
       tag:'LIVE FUTURES',
@@ -596,42 +616,48 @@ async function loadNQFutures(){
   }catch(e){console.warn('NQ futures fail:',e.message);return null}
 }
 
-async function loadQQQFallback(){
+// Compute approximate NQ price from QQQ ETF (reliable direct CORS API)
+async function loadNQFromQQQ(){
   try{
-    const r=await fetch('https://api.twelvedata.com/quote?symbol=QQQ&apikey=demo',{signal:AbortSignal.timeout(4000)});
+    const r=await fetch('https://api.twelvedata.com/quote?symbol=QQQ&apikey=demo',{signal:AbortSignal.timeout(5000)});
     if(!r.ok)return null;
     const d=await r.json();
     if(d.code||!d.close)return null;
-    const price=parseFloat(d.close),prev=parseFloat(d.previous_close);
+    const qqqPrice=parseFloat(d.close),qqqPrev=parseFloat(d.previous_close);
+    // Convert QQQ to NQ using stable ratio
+    const price=Math.round(qqqPrice*NQ_QQQ_RATIO*100)/100;
+    const prev=Math.round(qqqPrev*NQ_QQQ_RATIO*100)/100;
     return{
       symbol:'NQ / MNQ',
-      tag:'VIA QQQ ETF',
+      tag:'EST. VIA QQQ',
       price:price,
       prevClose:prev,
       change:price-prev,
       changePct:((price-prev)/prev)*100,
-      high:parseFloat(d.high)||price,
-      low:parseFloat(d.low)||price,
-      open:parseFloat(d.open)||price,
+      high:Math.round(parseFloat(d.high)*NQ_QQQ_RATIO*100)/100||price,
+      low:Math.round(parseFloat(d.low)*NQ_QQQ_RATIO*100)/100||price,
+      open:Math.round(parseFloat(d.open)*NQ_QQQ_RATIO*100)/100||price,
     };
-  }catch(e){console.warn('Market fail:',e.message);return null}
+  }catch(e){console.warn('QQQ fallback fail:',e.message);return null}
 }
 
 function renderMarket(data){
   const el=document.getElementById('marketContent');
   if(!data){el.innerHTML='<div class="market-unavailable">Market data unavailable — tap REFRESH to retry</div>';return}
   const up=data.change>=0;
+  const isLive=data.tag==='LIVE FUTURES';
+  const tagStyle=isLive?'background:rgba(46,204,113,0.15);color:var(--green)':'background:rgba(243,156,18,0.15);color:var(--orange)';
   el.innerHTML=`
-    <div class="market-symbol">${data.symbol} <span class="tag">${data.tag||'LIVE FUTURES'}</span></div>
-    <div class="market-price">$${data.price.toFixed(2)}</div>
+    <div class="market-symbol">${data.symbol} <span class="tag" style="${tagStyle}">${data.tag||'LIVE FUTURES'}</span></div>
+    <div class="market-price">$${data.price.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
     <div class="market-change ${up?'up':'down'}">
       ${up?'▲':'▼'} ${up?'+':''}${data.change.toFixed(2)} (${up?'+':''}${data.changePct.toFixed(2)}%)
     </div>
     <div class="market-details">
-      <span>O ${data.open.toFixed(2)}</span>
-      <span>H ${data.high.toFixed(2)}</span>
-      <span>L ${data.low.toFixed(2)}</span>
-      <span>PC ${data.prevClose.toFixed(2)}</span>
+      <span>O ${data.open.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+      <span>H ${data.high.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+      <span>L ${data.low.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+      <span>PC ${data.prevClose.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
     </div>
   `;
 }
