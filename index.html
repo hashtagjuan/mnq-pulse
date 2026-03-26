@@ -272,10 +272,13 @@ const PROXIES=[
   u=>'https://api.codetabs.com/v1/proxy?quest='+encodeURIComponent(u),
 ];
 
+// Promise that rejects after ms (safe timeout wrapper)
+function timeout(ms){return new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),ms))}
+
 // Race all proxies — first good response wins
-async function proxyFetch(url,timeout=6000){
+async function proxyFetch(url,ms=5000){
   const ctrl=new AbortController();
-  const timer=setTimeout(()=>ctrl.abort(),timeout);
+  const timer=setTimeout(()=>ctrl.abort(),ms);
   try{
     const r=await Promise.any(PROXIES.map(p=>
       fetch(p(url),{signal:ctrl.signal}).then(r=>{if(!r.ok)throw new Error(r.status);return r})
@@ -285,14 +288,9 @@ async function proxyFetch(url,timeout=6000){
   }catch(e){clearTimeout(timer);return null}
 }
 
-// Retry proxy fetch with delay between attempts
-async function proxyFetchRetry(url,retries=2,timeout=6000){
-  for(let i=0;i<retries;i++){
-    const r=await proxyFetch(url,timeout);
-    if(r)return r;
-    if(i<retries-1)await new Promise(ok=>setTimeout(ok,500));
-  }
-  return null;
+// Single attempt with hard timeout wrapper (never hangs)
+async function safeFetch(url,ms=5000){
+  try{return await Promise.race([proxyFetch(url,ms),timeout(ms+500)])}catch(e){return null}
 }
 
 // ========== NEWS ==========
@@ -417,7 +415,7 @@ async function loadSignal(marketData,volData){
     // Get VIX
     let vix=null;
     try{
-      const r=await proxyFetchRetry('https://query2.finance.yahoo.com/v8/finance/chart/^VIX?interval=1d&range=2d',2,6000);
+      const r=await safeFetch('https://query2.finance.yahoo.com/v8/finance/chart/^VIX?interval=1d&range=2d',5000);
       if(r){const d=await r.json();vix=d.chart.result[0].meta.regularMarketPrice;}
     }catch(e){}
 
@@ -512,7 +510,7 @@ let lastVolData=null;
 
 async function loadVolume(){
   try{
-    const r=await proxyFetchRetry('https://query2.finance.yahoo.com/v8/finance/chart/NQ=F?interval=5m&range=1d',2,6000);
+    const r=await safeFetch('https://query2.finance.yahoo.com/v8/finance/chart/NQ=F?interval=5m&range=1d',5000);
     if(!r)return null;
     const d=await r.json();
     if(!d.chart||!d.chart.result)return null;
@@ -585,23 +583,26 @@ async function loadMarket(){
 
 async function loadNQFutures(){
   try{
-    // Try both Yahoo endpoints in parallel via proxy with retry
+    // Single attempt per Yahoo endpoint, race them — hard 6s ceiling
     const urls=[
       'https://query2.finance.yahoo.com/v8/finance/chart/NQ=F?range=1d&interval=1d',
       'https://query1.finance.yahoo.com/v8/finance/chart/NQ=F?interval=1d&range=1d',
     ];
-    const attempts=urls.map(u=>proxyFetchRetry(u,2,6000).then(async r=>{
+    const attempts=urls.map(u=>safeFetch(u,5000).then(async r=>{
       if(!r)throw new Error('no response');
       const d=await r.json();
       if(!d.chart||!d.chart.result)throw new Error('bad data');
       return d;
     }));
-    const d=await Promise.any(attempts).catch(()=>null);
+    const d=await Promise.race([
+      Promise.any(attempts).catch(()=>null),
+      timeout(8000).catch(()=>null)
+    ]);
     if(!d)return null;
     const meta=d.chart.result[0].meta;
     const price=meta.regularMarketPrice;
     const prev=meta.chartPreviousClose||meta.previousClose;
-    if(!price||price<1000)return null; // sanity: NQ should be >1000
+    if(!price||price<1000)return null;
     return{
       symbol:'NQ / MNQ',
       tag:'LIVE FUTURES',
@@ -619,7 +620,10 @@ async function loadNQFutures(){
 // Compute approximate NQ price from QQQ ETF (reliable direct CORS API)
 async function loadNQFromQQQ(){
   try{
-    const r=await fetch('https://api.twelvedata.com/quote?symbol=QQQ&apikey=demo',{signal:AbortSignal.timeout(5000)});
+    const ctrl=new AbortController();
+    const t=setTimeout(()=>ctrl.abort(),5000);
+    const r=await fetch('https://api.twelvedata.com/quote?symbol=QQQ&apikey=demo',{signal:ctrl.signal});
+    clearTimeout(t);
     if(!r.ok)return null;
     const d=await r.json();
     if(d.code||!d.close)return null;
@@ -723,33 +727,28 @@ async function loadAll(){
 
   renderCalendar(buildCalendar());
 
-  let done=0;
-  const total=4; // news, market+signal, volume, (signal computed after market+vol)
-  function tick(){
-    done++;
-    if(done>=total){
-      btn.classList.remove('loading');
-      btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> REFRESH';
-      document.getElementById('lastUpdated').textContent=new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true});
-      isLoading=false;
-    }
+  function finish(){
+    btn.classList.remove('loading');
+    btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> REFRESH';
+    document.getElementById('lastUpdated').textContent=new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true});
+    isLoading=false;
   }
 
-  // News — independent
-  loadNews().then(v=>renderNews(v||[])).catch(()=>renderNews([])).finally(tick);
+  try{
+    // Fire all in parallel, each with its own error handling
+    const newsP=loadNews().then(v=>renderNews(v||[])).catch(()=>renderNews([]));
+    const volP=loadVolume().then(v=>{renderVolume(v);return v}).catch(()=>{renderVolume(null);return null});
+    const mktP=loadMarket().then(v=>{renderMarket(v);return v}).catch(()=>{renderMarket(null);return null});
+    const sigP=Promise.all([mktP,volP]).then(([m,v])=>loadSignal(m,v).then(s=>renderSignal(s))).catch(()=>renderSignal(null));
 
-  // Volume — independent, render immediately
-  const volPromise=loadVolume().then(v=>{renderVolume(v);return v}).catch(()=>{renderVolume(null);return null});
-  volPromise.finally(tick);
+    // Wait for everything, but hard-cap at 15 seconds no matter what
+    await Promise.race([
+      Promise.allSettled([newsP,volP,mktP,sigP]),
+      new Promise(ok=>setTimeout(ok,15000))
+    ]);
+  }catch(e){console.warn('loadAll error:',e)}
 
-  // Market + Signal — market first, then signal uses market+vol data
-  const mktPromise=loadMarket().then(v=>{renderMarket(v);return v}).catch(()=>{renderMarket(null);return null});
-  mktPromise.finally(tick);
-
-  // Signal depends on market + volume
-  Promise.all([mktPromise,volPromise]).then(([mkt,vol])=>{
-    return loadSignal(mkt,vol).then(s=>renderSignal(s)).catch(()=>renderSignal(null));
-  }).finally(tick);
+  finish();
 }
 
 // Auto-load on open
