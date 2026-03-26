@@ -434,23 +434,26 @@ async function loadMarket(){
 
 async function loadNQFutures(){
   try{
-    // Yahoo Finance NQ=F via allorigins /get endpoint (wraps in JSON contents)
-    const url='https://api.allorigins.win/get?url='+encodeURIComponent('https://query1.finance.yahoo.com/v8/finance/chart/NQ=F?interval=1d&range=1d');
-    const r=await fetch(url,{signal:AbortSignal.timeout(4000)});
-    if(!r.ok)return null;
-    const wrapper=await r.json();
-    const d=JSON.parse(wrapper.contents);
+    // Race all proxies for Yahoo NQ=F futures data
+    const yahooUrl='https://query1.finance.yahoo.com/v8/finance/chart/NQ=F?interval=1d&range=1d';
+    const r=await proxyFetch(yahooUrl,5000);
+    if(!r)return null;
+    const d=await r.json();
+    if(!d.chart||!d.chart.result)return null;
     const meta=d.chart.result[0].meta;
+    const price=meta.regularMarketPrice;
+    const prev=meta.chartPreviousClose||meta.previousClose;
+    if(!price||price<1000)return null; // sanity check: NQ should be >1000
     return{
       symbol:'NQ / MNQ',
       tag:'LIVE FUTURES',
-      price:meta.regularMarketPrice,
-      prevClose:meta.chartPreviousClose||meta.previousClose,
-      change:meta.regularMarketPrice-(meta.chartPreviousClose||meta.previousClose),
-      changePct:((meta.regularMarketPrice-(meta.chartPreviousClose||meta.previousClose))/(meta.chartPreviousClose||meta.previousClose))*100,
-      high:meta.regularMarketDayHigh||meta.regularMarketPrice,
-      low:meta.regularMarketDayLow||meta.regularMarketPrice,
-      open:meta.regularMarketOpen||meta.regularMarketPrice,
+      price:price,
+      prevClose:prev,
+      change:price-prev,
+      changePct:((price-prev)/prev)*100,
+      high:meta.regularMarketDayHigh||price,
+      low:meta.regularMarketDayLow||price,
+      open:meta.regularMarketOpen||price,
     };
   }catch(e){console.warn('NQ futures fail:',e.message);return null}
 }
