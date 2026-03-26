@@ -95,19 +95,29 @@ body{min-height:100dvh;background:var(--bg)}
 .market-details{display:flex;gap:16px;margin-top:8px;font-size:11px;color:var(--text-muted);font-family:var(--font-mono);font-variant-numeric:tabular-nums}
 .market-unavailable{padding:20px 16px;color:var(--text-muted);font-size:13px}
 
-/* Fear & Greed */
-.fg-card{padding:16px;display:flex;flex-direction:column;align-items:center}
-.fg-label{font-size:11px;color:var(--text-muted);font-weight:600;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:6px;align-self:flex-start}
-.fg-value{font-size:48px;font-weight:700;font-family:var(--font-mono);line-height:1}
-.fg-class{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin-top:4px}
-.fg-prev{font-size:10px;color:var(--text-faint);margin-top:6px}
-.fg-extreme-fear{color:var(--red)}
-.fg-fear{color:var(--orange)}
-.fg-neutral{color:var(--yellow)}
-.fg-greed,.fg-extreme-greed{color:var(--green)}
+/* NQ Signal */
+.signal-card{padding:16px;display:flex;flex-direction:column;align-items:center}
+.signal-label{font-size:11px;color:var(--text-muted);font-weight:600;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:6px;align-self:flex-start}
+.signal-value{font-size:42px;font-weight:700;font-family:var(--font-mono);line-height:1}
+.signal-class{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin-top:6px}
+.signal-sub{font-size:10px;color:var(--text-faint);margin-top:6px;text-align:center;line-height:1.4}
+.signal-factors{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin-top:10px;width:100%;font-size:10px}
+.signal-factor{display:flex;justify-content:space-between;color:var(--text-muted)}
+.signal-factor .val{font-family:var(--font-mono);font-weight:600}
+.signal-factor .val.up{color:var(--green)}
+.signal-factor .val.down{color:var(--red)}
+.signal-factor .val.flat{color:var(--yellow)}
 
 /* Gauge SVG */
 .gauge-wrap{width:100%;max-width:200px;margin:4px 0}
+
+/* Volume Chart */
+.vol-card{padding:16px}
+.vol-chart{width:100%;height:120px;display:flex;align-items:flex-end;gap:1px}
+.vol-bar{flex:1;min-width:2px;border-radius:1px 1px 0 0;transition:height 0.3s}
+.vol-labels{display:flex;justify-content:space-between;margin-top:4px;font-size:9px;color:var(--text-faint);font-family:var(--font-mono)}
+.vol-stat{display:flex;gap:16px;margin-bottom:8px;font-size:11px;color:var(--text-muted);font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.vol-stat .val{font-weight:700;color:var(--text)}
 
 /* News List */
 .news-scroll{max-height:500px;overflow-y:auto}
@@ -185,13 +195,28 @@ body{min-height:100dvh;background:var(--bg)}
         <div class="skeleton sk-line w75"></div>
       </div>
     </div>
-    <div class="card" id="fgCard">
-      <div class="fg-card" id="fgContent">
-        <div class="fg-label">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-          FEAR & GREED
+    <div class="card" id="signalCard">
+      <div class="signal-card" id="signalContent">
+        <div class="signal-label">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12h4l3-9 4 18 3-9h4"/></svg>
+          NQ SIGNAL
         </div>
-        <div class="skeleton" style="width:120px;height:80px;border-radius:60px 60px 0 0;margin:12px 0"></div>
+        <div class="skeleton" style="width:80px;height:48px;margin:12px 0"></div>
+        <div class="skeleton sk-line w75"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Volume Chart Row -->
+  <div style="margin-bottom:12px">
+    <div class="card" id="volCard">
+      <div class="card-header">
+        <span class="icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="14" width="4" height="7"/><rect x="10" y="9" width="4" height="12"/><rect x="16" y="4" width="4" height="17"/></svg></span>
+        INTRADAY VOLUME
+        <span class="badge" id="volBadge">NQ=F</span>
+      </div>
+      <div class="vol-card" id="volContent">
+        <div class="skeleton" style="width:100%;height:120px"></div>
       </div>
     </div>
   </div>
@@ -235,7 +260,7 @@ body{min-height:100dvh;background:var(--bg)}
 </main>
 
 <footer class="footer">
-  Data from CNBC, MarketWatch, Investing.com & Alternative.me · Not financial advice<br>
+  Data from Yahoo Finance, CNBC, MarketWatch & Investing.com · Not financial advice<br>
   <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer">Created with Perplexity Computer</a>
 </footer>
 
@@ -373,54 +398,167 @@ function renderNews(items){
   }).join('');
 }
 
-// ========== FEAR & GREED ==========
-async function loadFG(){
-  // Try direct first (API has CORS headers), fall back to proxy
-  const url='https://api.alternative.me/fng/?limit=2';
-  let d=null;
+// ========== NQ COMPOSITE SIGNAL ==========
+// Combines: momentum, VIX, volume, range position into one bull/bear score
+let lastSignalData=null;
+
+async function loadSignal(marketData,volData){
   try{
-    const r=await fetch(url,{signal:AbortSignal.timeout(3000)});
-    d=await r.json();
-  }catch(e){
-    console.warn('FG direct fail, trying proxy:',e.message);
+    // Get VIX
+    let vix=null;
     try{
-      const r=await proxyFetch(url);
-      if(r)d=await r.json();
-    }catch(e2){console.warn('FG proxy fail:',e2.message)}
-  }
-  if(!d||!d.data||!d.data.length)return null;
-  const cur=d.data[0],prev=d.data[1]||cur;
-  return{value:+cur.value,cls:cur.value_classification,prev:{value:+prev.value,cls:prev.value_classification}};
+      const r=await proxyFetch('https://query1.finance.yahoo.com/v8/finance/chart/^VIX?interval=1d&range=2d',4000);
+      if(r){const d=await r.json();vix=d.chart.result[0].meta.regularMarketPrice;}
+    }catch(e){}
+
+    if(!marketData)return null;
+    const price=marketData.price,prev=marketData.prevClose,hi=marketData.high,lo=marketData.low;
+    
+    // Factor 1: Momentum (price vs prev close) — weight 35%
+    const momPct=((price-prev)/prev)*100;
+    const momScore=Math.max(-100,Math.min(100,momPct*25)); // ±4% = ±100
+    
+    // Factor 2: Range position (where price sits in today's range) — weight 20%
+    const range=hi-lo;
+    const rangePos=range>0?((price-lo)/range)*200-100:0; // -100 to +100
+    
+    // Factor 3: VIX (inverted — low VIX = bullish) — weight 25%
+    let vixScore=0;
+    if(vix!==null){
+      if(vix<15)vixScore=80;
+      else if(vix<20)vixScore=40;
+      else if(vix<25)vixScore=0;
+      else if(vix<30)vixScore=-40;
+      else vixScore=-80;
+    }
+    
+    // Factor 4: Volume conviction — weight 20%
+    let volScore=0;
+    if(volData&&volData.avgVol>0){
+      const volRatio=volData.totalVol/volData.avgVol;
+      volScore=(momPct>=0?1:-1)*Math.min(100,Math.max(-100,(volRatio-1)*100));
+    }
+    
+    // Weighted composite
+    const composite=Math.round(momScore*0.35+rangePos*0.20+vixScore*0.25+volScore*0.20);
+    const clamped=Math.max(-100,Math.min(100,composite));
+    
+    lastSignalData={
+      score:clamped,
+      factors:{
+        momentum:{val:momPct,score:momScore},
+        range:{val:range>0?((price-lo)/range)*100:50,score:rangePos},
+        vix:{val:vix,score:vixScore},
+        volume:{ratio:volData?volData.totalVol/volData.avgVol:null,score:volScore}
+      }
+    };
+    return lastSignalData;
+  }catch(e){console.warn('Signal fail:',e.message);return null}
 }
 
-function fgClass(v){
-  if(v<=25)return'fg-extreme-fear';if(v<=45)return'fg-fear';
-  if(v<=55)return'fg-neutral';if(v<=75)return'fg-greed';return'fg-extreme-greed';
-}
-
-function renderFG(data){
-  const el=document.getElementById('fgContent');
-  if(!data){el.innerHTML='<div style="padding:20px;color:var(--text-muted);font-size:13px">Sentiment data unavailable</div>';return}
-  const angle=((data.value/100)*180-90)*(Math.PI/180);
-  const cx=85,cy=85,r=70;
-  const nx=cx+(r-10)*Math.cos(angle),ny=cy+(r-10)*Math.sin(angle);
+function renderSignal(data){
+  const el=document.getElementById('signalContent');
+  if(!data){el.innerHTML='<div style="padding:20px;color:var(--text-muted);font-size:13px">Signal unavailable</div>';return}
+  const s=data.score;
+  let label,color;
+  if(s>=60){label='STRONG BULL';color='var(--green)'}
+  else if(s>=25){label='BULLISH';color='var(--green)'}
+  else if(s>=-25){label='NEUTRAL';color='var(--yellow)'}
+  else if(s>=-60){label='BEARISH';color='var(--red)'}
+  else{label='STRONG BEAR';color='var(--red)'}
+  
+  const f=data.factors;
+  const cls=(v)=>v>0?'up':v<0?'down':'flat';
   el.innerHTML=`
-    <div class="fg-label">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-      FEAR & GREED
+    <div class="signal-label">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12h4l3-9 4 18 3-9h4"/></svg>
+      NQ SIGNAL
     </div>
     <div class="gauge-wrap">
       <svg viewBox="0 0 170 100">
         <defs><linearGradient id="gg" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#e74c3c"/><stop offset="25%" stop-color="#f39c12"/><stop offset="50%" stop-color="#f1c40f"/><stop offset="75%" stop-color="#2ecc71"/><stop offset="100%" stop-color="#27ae60"/></linearGradient></defs>
-        <path d="M ${cx-r} ${cy} A ${r} ${r} 0 0 1 ${cx+r} ${cy}" fill="none" stroke="#252836" stroke-width="12" stroke-linecap="round"/>
-        <path d="M ${cx-r} ${cy} A ${r} ${r} 0 0 1 ${cx+r} ${cy}" fill="none" stroke="url(#gg)" stroke-width="8" stroke-linecap="round" opacity="0.8"/>
-        <line x1="${cx}" y1="${cy}" x2="${nx}" y2="${ny}" stroke="var(--text)" stroke-width="2.5" stroke-linecap="round"/>
-        <circle cx="${cx}" cy="${cy}" r="4" fill="var(--text)"/>
-        <text x="${cx}" y="${cy-18}" text-anchor="middle" fill="var(--text)" font-size="22" font-weight="700" font-family="var(--font-mono)">${data.value}</text>
+        <path d="M 15 85 A 70 70 0 0 1 155 85" fill="none" stroke="#252836" stroke-width="12" stroke-linecap="round"/>
+        <path d="M 15 85 A 70 70 0 0 1 155 85" fill="none" stroke="url(#gg)" stroke-width="8" stroke-linecap="round" opacity="0.8"/>
+        ${(()=>{
+          const angle=(((s+100)/200)*180-90)*(Math.PI/180);
+          const nx=85+60*Math.cos(angle),ny=85+60*Math.sin(angle);
+          return `<line x1="85" y1="85" x2="${nx}" y2="${ny}" stroke="var(--text)" stroke-width="2.5" stroke-linecap="round"/><circle cx="85" cy="85" r="4" fill="var(--text)"/>`;
+        })()}
+        <text x="85" y="65" text-anchor="middle" fill="${color}" font-size="20" font-weight="700" font-family="var(--font-mono)">${s>0?'+':''}${s}</text>
       </svg>
     </div>
-    <div class="fg-class ${fgClass(data.value)}">${data.cls}</div>
-    <div class="fg-prev">Yesterday: ${data.prev.value} (${data.prev.cls})</div>
+    <div class="signal-class" style="color:${color}">${label}</div>
+    <div class="signal-factors">
+      <div class="signal-factor"><span>Momentum</span><span class="val ${cls(f.momentum.val)}">${f.momentum.val>=0?'+':''}${f.momentum.val.toFixed(2)}%</span></div>
+      <div class="signal-factor"><span>VIX</span><span class="val ${f.vix.val?cls(-f.vix.score):'flat'}">${f.vix.val?f.vix.val.toFixed(1):'N/A'}</span></div>
+      <div class="signal-factor"><span>Range Pos</span><span class="val ${cls(f.range.score)}">${f.range.val.toFixed(0)}%</span></div>
+      <div class="signal-factor"><span>Vol Ratio</span><span class="val ${f.volume.ratio?cls(f.volume.score):'flat'}">${f.volume.ratio?f.volume.ratio.toFixed(1)+'x':'N/A'}</span></div>
+    </div>
+  `;
+}
+
+// ========== INTRADAY VOLUME CHART ==========
+let lastVolData=null;
+
+async function loadVolume(){
+  try{
+    const r=await proxyFetch('https://query1.finance.yahoo.com/v8/finance/chart/NQ=F?interval=5m&range=1d',5000);
+    if(!r)return null;
+    const d=await r.json();
+    if(!d.chart||!d.chart.result)return null;
+    const result=d.chart.result[0];
+    const ts=result.timestamp||[];
+    const vols=result.indicators.quote[0].volume||[];
+    const closes=result.indicators.quote[0].close||[];
+    
+    const bars=[];
+    let totalVol=0;
+    for(let i=0;i<ts.length;i++){
+      const v=vols[i]||0;
+      const c=closes[i];
+      const prevC=i>0?closes[i-1]:c;
+      totalVol+=v;
+      bars.push({time:ts[i],vol:v,close:c,up:c>=prevC});
+    }
+    
+    // Average volume per bar (rough baseline)
+    const nonZero=bars.filter(b=>b.vol>0);
+    const avgVol=nonZero.length?nonZero.reduce((s,b)=>s+b.vol,0)/nonZero.length:0;
+    
+    lastVolData={bars,totalVol,avgVol};
+    return lastVolData;
+  }catch(e){console.warn('Volume fail:',e.message);return null}
+}
+
+function renderVolume(data){
+  const el=document.getElementById('volContent');
+  if(!data||!data.bars.length){el.innerHTML='<div style="padding:20px;color:var(--text-muted);font-size:13px">Volume data unavailable</div>';return}
+  
+  const bars=data.bars.filter(b=>b.vol>0);
+  if(!bars.length){el.innerHTML='<div style="padding:20px;color:var(--text-muted);font-size:13px">Market not open yet</div>';return}
+  const maxVol=Math.max(...bars.map(b=>b.vol));
+  
+  const fmtVol=(v)=>v>=1e6?(v/1e6).toFixed(1)+'M':v>=1e3?(v/1e3).toFixed(0)+'K':v;
+  const fmtTime=(ts)=>new Date(ts*1000).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true});
+  
+  el.innerHTML=`
+    <div class="vol-stat">
+      <span>Total <span class="val">${fmtVol(data.totalVol)}</span></span>
+      <span>Avg/Bar <span class="val">${fmtVol(Math.round(data.avgVol))}</span></span>
+      <span>Peak <span class="val">${fmtVol(maxVol)}</span></span>
+    </div>
+    <div class="vol-chart">
+      ${bars.map(b=>{
+        const h=Math.max(2,Math.round((b.vol/maxVol)*120));
+        const color=b.up?'var(--green)':'var(--red)';
+        const opacity=b.vol>data.avgVol?'1':'0.5';
+        return `<div class="vol-bar" style="height:${h}px;background:${color};opacity:${opacity}" title="${fmtTime(b.time)}: ${fmtVol(b.vol)}"></div>`;
+      }).join('')}
+    </div>
+    <div class="vol-labels">
+      <span>${fmtTime(bars[0].time)}</span>
+      <span>${fmtTime(bars[bars.length-1].time)}</span>
+    </div>
   `;
 }
 
@@ -551,32 +689,41 @@ function renderCalendar(events){
 // ========== LOAD ALL — RENDER AS EACH ARRIVES ==========
 let isLoading=false;
 async function loadAll(){
-  if(isLoading)return; // prevent double-tap
+  if(isLoading)return;
   isLoading=true;
   const btn=document.getElementById('refreshBtn');
   btn.classList.add('loading');
   btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> LOADING...';
 
-  // Calendar is instant — render immediately
   renderCalendar(buildCalendar());
 
-  // Fire all network requests in parallel, render each the instant it resolves
   let done=0;
-  const total=3;
+  const total=4; // news, market+signal, volume, (signal computed after market+vol)
   function tick(){
     done++;
     if(done>=total){
       btn.classList.remove('loading');
       btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> REFRESH';
-      const now=new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true});
-      document.getElementById('lastUpdated').textContent=now;
+      document.getElementById('lastUpdated').textContent=new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true});
       isLoading=false;
     }
   }
 
+  // News — independent
   loadNews().then(v=>renderNews(v||[])).catch(()=>renderNews([])).finally(tick);
-  loadFG().then(v=>renderFG(v)).catch(()=>renderFG(null)).finally(tick);
-  loadMarket().then(v=>renderMarket(v)).catch(()=>renderMarket(null)).finally(tick);
+
+  // Volume — independent, render immediately
+  const volPromise=loadVolume().then(v=>{renderVolume(v);return v}).catch(()=>{renderVolume(null);return null});
+  volPromise.finally(tick);
+
+  // Market + Signal — market first, then signal uses market+vol data
+  const mktPromise=loadMarket().then(v=>{renderMarket(v);return v}).catch(()=>{renderMarket(null);return null});
+  mktPromise.finally(tick);
+
+  // Signal depends on market + volume
+  Promise.all([mktPromise,volPromise]).then(([mkt,vol])=>{
+    return loadSignal(mkt,vol).then(s=>renderSignal(s)).catch(()=>renderSignal(null));
+  }).finally(tick);
 }
 
 // Auto-load on open
