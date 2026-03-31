@@ -27,6 +27,9 @@
 <meta name="description" content="Real-time news dashboard for MNQ/NQ futures traders.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://api.twelvedata.com">
+<link rel="preconnect" href="https://api.rss2json.com">
+<link rel="preconnect" href="https://api.alternative.me">
 <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@100..900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -266,7 +269,7 @@ body{min-height:100dvh;background:var(--bg)}
 
 <script>
 // ========== SAFE FETCH — with timeout via AbortController ==========
-async function safeFetch(url,ms=5000){
+async function safeFetch(url,ms=4000){
   const ctrl=new AbortController();
   const timer=setTimeout(()=>ctrl.abort(),ms);
   try{
@@ -483,16 +486,19 @@ function renderVolume(data){
   `;
 }
 
-// ========== NQ COMPOSITE SIGNAL ==========
-async function loadSignal(marketData,volData){
+// ========== FEAR & GREED — fetched in parallel with everything else ==========
+async function loadFearGreed(){
   try{
-    // Get Fear & Greed index as VIX proxy (direct CORS from alternative.me)
-    let fearGreed=null;
-    try{
-      const r=await safeFetch('https://api.alternative.me/fng/?limit=1',3000);
-      if(r){const d=await r.json();fearGreed=parseInt(d.data[0].value);}
-    }catch(e){}
+    const r=await safeFetch('https://api.alternative.me/fng/?limit=1',4000);
+    if(!r)return null;
+    const d=await r.json();
+    return parseInt(d.data[0].value);
+  }catch(e){console.warn('Fear/Greed fail:',e.message);return null}
+}
 
+// ========== NQ COMPOSITE SIGNAL ==========
+function computeSignal(marketData,volData,fearGreed){
+  try{
     if(!marketData)return null;
     const price=marketData.price,prev=marketData.prevClose,hi=marketData.high,lo=marketData.low;
 
@@ -642,14 +648,20 @@ async function loadAll(){
   }
 
   try{
+    // Fire ALL fetches in parallel — no sequential dependencies
     const newsP=loadNews().then(v=>renderNews(v||[])).catch(()=>renderNews([]));
     const volP=loadVolume().then(v=>{renderVolume(v);return v}).catch(()=>{renderVolume(null);return null});
     const mktP=loadMarket().then(v=>{renderMarket(v);return v}).catch(()=>{renderMarket(null);return null});
-    const sigP=Promise.all([mktP,volP]).then(([m,v])=>loadSignal(m,v).then(s=>renderSignal(s))).catch(()=>renderSignal(null));
+    const fgP=loadFearGreed().catch(()=>null);
+
+    // Signal renders only after ALL its inputs resolve — no partial/wrong score
+    const sigP=Promise.all([mktP,volP,fgP]).then(([m,v,fg])=>{
+      renderSignal(computeSignal(m,v,fg));
+    }).catch(()=>renderSignal(null));
 
     await Promise.race([
       Promise.allSettled([newsP,volP,mktP,sigP]),
-      new Promise(ok=>setTimeout(ok,12000))
+      new Promise(ok=>setTimeout(ok,10000))
     ]);
   }catch(e){console.warn('loadAll error:',e)}
 
